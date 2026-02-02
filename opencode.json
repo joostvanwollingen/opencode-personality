@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["./src/index.ts"],
+  "command": {
+    "mood": {
+      "description": "Set the assistant's mood [mood: bored, angry, lethargic] [duration: message, session, permanent]",
+      "template": "Call the setMood tool to set the mood to the mood and duration requested by the user. If the duration is not mentioned assume session."
+    },
+    "personality": {
+      "description": "Manage personality config: create/edit/show/reset",
+      "template": "Call the appropriate personality management tool based on the user's request to create, edit, show, or reset the personality configuration."
+    }
+  }
+}
