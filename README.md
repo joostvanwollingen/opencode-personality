@@ -39,11 +39,7 @@ A configurable personality and mood system plugin for [OpenCode](https://opencod
 
 ### From npm
 
-```bash
-npm install opencode-personality
-```
-
-Then add to your `~/.config/opencode/opencode.json`:
+Add to your `~/.config/opencode/opencode.json`:
 
 ```json
 {
