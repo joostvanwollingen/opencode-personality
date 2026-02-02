@@ -10,6 +10,10 @@ on:
         required: false
         default: 'latest'
 
+permissions:
+  id-token: write  # Required for npm trusted publishing (OIDC)
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -34,5 +38,3 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --access public --tag ${{ github.event.inputs.tag || 'latest' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

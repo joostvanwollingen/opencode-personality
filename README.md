@@ -39,9 +39,21 @@ Then add to your `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "plugin": ["opencode-personality"]
+  "plugin": ["opencode-personality"],
+  "command": {
+    "mood": {
+      "description": "Set the assistant's mood [mood: bored, angry, lethargic] [duration: message, session, permanent]",
+      "template": "Call the setMood tool to set the mood to the mood and duration requested by the user. If the duration is not mentioned assume session."
+    },
+    "personality": {
+      "description": "Manage personality config: create/edit/show/reset",
+      "template": "Call the appropriate personality management tool based on the user's request to create, edit, show, or reset the personality configuration."
+    }
+  }
 }
 ```
+
+> **Note:** The `command` definitions are required because OpenCode's plugin API doesn't yet support programmatic command registration. Commands must be defined in your config file.
 
 ### From Source
 

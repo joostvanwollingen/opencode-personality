@@ -1,6 +1,6 @@
 {
   "name": "opencode-personality",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Configurable personality and mood system plugin for OpenCode",
   "type": "module",
   "main": "dist/index.js",
