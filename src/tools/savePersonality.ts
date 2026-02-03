@@ -61,19 +61,19 @@ export function createSavePersonalityTool(
       const scope = args.scope ?? "project"
       const scopePath = resolveScopePath(scope, configResult)
 
-      const config: Partial<PersonalityFile> = {
-        name: args.name?.trim() ?? "",
-        description: args.description.trim(),
-        emoji: args.emoji ?? false,
-        slangIntensity: args.slangIntensity ?? 0,
-        mood: {
-          enabled: args.moodEnabled ?? false,
-          default: args.moodDefault ?? "happy",
-          override: null,
-          drift: args.moodDrift ?? 0.2,
-          toast: args.moodToast ?? true,
-        },
-      }
+       const config: Partial<PersonalityFile> = {
+         name: args.name?.trim() ?? "",
+         description: args.description.trim(),
+         emoji: args.emoji ?? false,
+         slangIntensity: args.slangIntensity ?? 0,
+         mood: {
+           enabled: args.moodEnabled ?? false,
+           default: args.moodDefault ?? "happy",
+           override: null,
+           drift: args.moodDrift ?? 0.2,
+           toast: args.moodToast ?? true,
+         },
+       }
 
       if (args.moods && args.moods.length > 0) {
         config.moods = args.moods as MoodDefinition[]
