@@ -80,13 +80,6 @@ const personalityPlugin: Plugin = async (input: PluginInput) => {
       output.system.push(`<personality>\n${prompt}\n</personality>`)
     },
 
-    "experimental.session.compacting": async (_hookInput, output) => {
-      const state = loadMoodState(statePath, config)
-      output.context.push(
-        `Assistant personality: ${config.description}. Current mood: ${state.current}.`
-      )
-    },
-
     event: async ({ event }) => {
       if (event.type === "message.updated" && config.mood.enabled) {
         const msg = event.properties as { info?: { sessionID?: string; role?: string } }

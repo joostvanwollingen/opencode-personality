@@ -47,7 +47,6 @@ src/
 | Hook | Purpose |
 |------|---------|
 | `experimental.chat.system.transform` | Inject personality into system prompt |
-| `experimental.session.compacting` | Preserve personality during compaction |
 | `event` | Drift mood after assistant responses |
 | `command.execute.before` | Handle `/mood` and `/personality` commands |
 
