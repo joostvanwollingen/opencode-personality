@@ -13,6 +13,9 @@ export default [
         sourceType: "module",
         project: "./tsconfig.json",
       },
+      globals: {
+        Bun: "readonly",
+      },
     },
     plugins: {
       "@typescript-eslint": tseslint,
