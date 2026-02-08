@@ -13,7 +13,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "personalities"
   ],
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target node --format esm --sourcemap=external && tsc --emitDeclarationOnly",

@@ -1,10 +1,20 @@
-# Personality Switcher - Implementation Proposal
+# Personality Switcher
+
+## Requirements
+
+We need to change the logic by which the personality is selected and loaded:
+
+1) **MUST** have access to multiple 'personality'; which means we need to store multiple personalities file - departure from a single one
+2) **MUST** modify the creation of personality
+3) **MUST** store the set of default personalities inside a `~/.config/opencode/personalities` or `.opencode/personalities`
+4) **MUST** allow the selection of a personality from available ones - merging user space level and project level personalities
+5) **MUST** store the currently selected one - new plugin config at either the user space level `~/.config/opencode` or at project level `.opencode`
+6) **MUST** validate any and all `<personality>.json` through the use of a JsonSchema file - generate a new on that needs to be referenced in those personality files.
 
 ## Executive Summary
 
-**Verdict: HIGHLY VIABLE** ✅
-
-Adding a personality switcher command to the `opencode-personality` plugin is straightforward and fits naturally into the existing architecture. Implementation requires minimal changes to the codebase.
+Adding a personality switcher command to the `opencode-personality` plugin is straightforward and fits naturally into
+the existing architecture. Implementation requires minimal changes to the codebase.
 
 ---
 
@@ -15,7 +25,8 @@ Adding a personality switcher command to the `opencode-personality` plugin is st
 The plugin uses a hook-based command system via `command.execute.before`:
 
 - Commands are registered as slash commands (e.g., `/personality`, `/mood`)
-- The `handlePersonalityCommand()` function in `src/commands/personality.ts` already has subcommands: `create`, `edit`, `show`, `reset`
+- The `handlePersonalityCommand()` function in `src/commands/personality.ts` already has subcommands: `create`, `edit`,
+  `show`, `reset`
 - Easy to add a new `switch` subcommand
 
 ### Config Loading
@@ -26,7 +37,7 @@ The plugin uses a hook-based command system via `command.execute.before`:
 
 ### File Structure
 
-```
+```bash
 ~/.config/opencode/personality.json   (global active config)
 ~/.config/opencode/personalities/     (global presets library)
   yoda.json
@@ -51,6 +62,7 @@ Store multiple personality files in `personalities/` directories (global and pro
 ### 2. Modified Creation Flow ✅
 
 Change `/personality create` to support:
+
 - **Activate mode** (default): Create and immediately activate the personality
 - **Save as preset**: Create and save to presets library without activating
 
@@ -61,6 +73,7 @@ Change `/personality create` to support:
 ### 4. Store Currently Selected ✅
 
 New plugin config fields track which preset is currently loaded:
+
 - `activePreset`: Name of the currently active preset
 - `activePresetScope`: Scope where the active preset is stored (`global` or `project`)
 
@@ -144,13 +157,13 @@ New plugin config fields track which preset is currently loaded:
 
 ## Risk Assessment
 
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Breaking existing workflows | Low | Keep default behavior for `/personality create` |
-| Overwriting user config | Medium | Add `--backup` flag, confirmation prompt |
-| State inconsistency | Medium | Validate activePreset points to existing preset on load |
-| Invalid preset files | Low | Add JSON schema validation |
-| Naming conflicts | Low | Clear precedence rules (project > global) |
+| Risk                        | Severity | Mitigation                                              |
+| --------------------------- | -------- | ------------------------------------------------------- |
+| Breaking existing workflows | Low      | Keep default behavior for `/personality create`         |
+| Overwriting user config     | Medium   | Add `--backup` flag, confirmation prompt                |
+| State inconsistency         | Medium   | Validate activePreset points to existing preset on load |
+| Invalid preset files        | Low      | Add JSON schema validation                              |
+| Naming conflicts            | Low      | Clear precedence rules (project > global)               |
 
 ---
 
@@ -160,6 +173,7 @@ New plugin config fields track which preset is currently loaded:
 
 1. **Current behavior preserved**: Existing single-file configs continue to work
 2. **Opt-in upgrade**: Users can convert their current config to a preset:
+
    ```bash
    # Save current as preset, then it becomes "managed"
    /personality edit --preset my-default
@@ -184,4 +198,5 @@ This proposal fulfills all four requirements:
 3. ✅ **Selection capability**: `/personality switch` lists and activates from available presets
 4. ✅ **Current selection tracking**: `activePreset` and `activePresetScope` in plugin config
 
-The design maintains backward compatibility while adding powerful preset management capabilities. The architecture is clean, extensible, and follows existing patterns in the codebase.
+The design maintains backward compatibility while adding powerful preset management capabilities. The architecture is
+clean, extensible, and follows existing patterns in the codebase.

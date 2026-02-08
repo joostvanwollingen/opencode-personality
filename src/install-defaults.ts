@@ -7,7 +7,7 @@ import { listPersonalities, savePersonalityFile } from './config.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULTS_DIR = path.join(__dirname, 'defaults');
+const DEFAULTS_DIR = path.join(__dirname, '..', '..', 'personalities');
 
 export function hasPersonalities(projectDir: string, globalConfigDir: string): boolean {
   const personalities = listPersonalities(projectDir, globalConfigDir);
