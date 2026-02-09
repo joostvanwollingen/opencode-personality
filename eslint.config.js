@@ -15,6 +15,7 @@ export default [
       },
       globals: {
         Bun: "readonly",
+        console: "readonly",
       },
     },
     plugins: {

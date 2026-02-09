@@ -14,7 +14,8 @@
   "files": [
     "dist",
     "src",
-    "personalities"
+    "personalities",
+    "schema"
   ],
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target node --format esm --sourcemap=external && tsc --emitDeclarationOnly",
@@ -24,7 +25,8 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build",
     "test": "bun test",
-    "test:watch": "bun test --watch"
+    "test:watch": "bun test --watch",
+    "generate-schema": "bun run bin/generate-schema.ts"
   },
   "keywords": [
     "opencode",
@@ -58,5 +60,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "zod": "^4.1.8"
   }
 }

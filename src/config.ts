@@ -12,6 +12,7 @@ import type {
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
+import { validatePersonalityFile, formatValidationErrors, type ValidationResult } from './schema.js';
 
 export const DEFAULT_MOOD_CONFIG: MoodConfig = {
   enabled: false,
@@ -158,7 +159,8 @@ export function loadPersonality(
   name: string,
   projectDir: string,
   globalConfigDir: string,
-): PersonalityLoadResult | null {
+  validate: boolean = false,
+): (PersonalityLoadResult & { validation?: ValidationResult }) | null {
   // Try project first
   const projectPersonalitiesDir = getPersonalitiesDir('project', projectDir, globalConfigDir);
   const projectPath = join(projectPersonalitiesDir, `${name}.json`);
@@ -167,7 +169,7 @@ export function loadPersonality(
     const content = tryLoadJson<PersonalityFile>(projectPath);
     if (content) {
       const stats = statSync(projectPath);
-      return {
+      const result: PersonalityLoadResult & { validation?: ValidationResult } = {
         personality: content,
         metadata: {
           name,
@@ -177,6 +179,14 @@ export function loadPersonality(
         },
         path: projectPath,
       };
+
+      // Validate after loading
+      const validation = validatePersonalityFile(content);
+      if (validate || !validation.valid) {
+        result.validation = validation;
+      }
+
+      return result;
     }
   }
 
@@ -188,7 +198,7 @@ export function loadPersonality(
     const content = tryLoadJson<PersonalityFile>(globalPath);
     if (content) {
       const stats = statSync(globalPath);
-      return {
+      const result: PersonalityLoadResult & { validation?: ValidationResult } = {
         personality: content,
         metadata: {
           name,
@@ -198,6 +208,14 @@ export function loadPersonality(
         },
         path: globalPath,
       };
+
+      // Validate after loading
+      const validation = validatePersonalityFile(content);
+      if (validate || !validation.valid) {
+        result.validation = validation;
+      }
+
+      return result;
     }
   }
 
@@ -218,6 +236,13 @@ export function savePersonalityFile(
   // Preserve existing state if file exists
   const existing = tryLoadJson<PersonalityFile>(filePath);
   const fileContent: PersonalityFile = existing?.state ? { ...config, state: existing.state } : config;
+
+  // Validate before saving
+  const validation = validatePersonalityFile(fileContent);
+  if (!validation.valid) {
+    const errorMessage = formatValidationErrors(validation);
+    throw new Error(`Validation failed for personality "${name}":\n${errorMessage}`);
+  }
 
   ensureDir(filePath);
   writeFileSync(filePath, JSON.stringify(fileContent, null, 2));
@@ -440,4 +465,108 @@ export function parseNumber(value: string | undefined): number | null {
   const parsed = Number(value);
   if (Number.isNaN(parsed)) return null;
   return parsed;
+}
+
+/** Get the backups directory path for a given scope */
+export function getBackupsDir(scope: ConfigScope, projectDir: string, globalConfigDir: string): string {
+  const baseDir = scope === 'global' ? globalConfigDir : join(projectDir, '.opencode');
+  return join(baseDir, 'backups');
+}
+
+/** Create a backup of a personality file */
+export function backupPersonality(
+  name: string,
+  scope: ConfigScope,
+  projectDir: string,
+  globalConfigDir: string,
+): string | null {
+  const personality = loadPersonality(name, projectDir, globalConfigDir);
+  if (!personality) {
+    return null;
+  }
+
+  const backupsDir = getBackupsDir(scope, projectDir, globalConfigDir);
+  const timestamp = Date.now();
+  const backupName = `${name}-backup-${timestamp}`;
+  const backupPath = join(backupsDir, `${backupName}.json`);
+
+  ensureDir(backupPath);
+  writeFileSync(backupPath, JSON.stringify(personality.personality, null, 2));
+
+  return backupName;
+}
+
+/** List all available backups */
+export function listBackups(
+  projectDir: string,
+  globalConfigDir: string,
+): Array<{ name: string; scope: ConfigScope; createdAt: string }> {
+  const backups: Array<{ name: string; scope: ConfigScope; createdAt: string }> = [];
+
+  // Load global backups
+  const globalBackupsDir = getBackupsDir('global', projectDir, globalConfigDir);
+  if (existsSync(globalBackupsDir)) {
+    for (const file of readdirSync(globalBackupsDir)) {
+      if (!file.endsWith('.json')) continue;
+
+      const name = file.slice(0, -5);
+      const filePath = join(globalBackupsDir, file);
+      const stats = statSync(filePath);
+
+      backups.push({
+        name,
+        scope: 'global',
+        createdAt: stats.mtime.toISOString(),
+      });
+    }
+  }
+
+  // Load project backups
+  const projectBackupsDir = getBackupsDir('project', projectDir, globalConfigDir);
+  if (existsSync(projectBackupsDir)) {
+    for (const file of readdirSync(projectBackupsDir)) {
+      if (!file.endsWith('.json')) continue;
+
+      const name = file.slice(0, -5);
+      const filePath = join(projectBackupsDir, file);
+      const stats = statSync(filePath);
+
+      backups.push({
+        name,
+        scope: 'project',
+        createdAt: stats.mtime.toISOString(),
+      });
+    }
+  }
+
+  return backups;
+}
+
+/** Restore a personality from backup */
+export function restorePersonality(
+  backupName: string,
+  scope: ConfigScope,
+  projectDir: string,
+  globalConfigDir: string,
+): { success: boolean; name?: string; error?: string } {
+  const backupsDir = getBackupsDir(scope, projectDir, globalConfigDir);
+  const backupPath = join(backupsDir, `${backupName}.json`);
+
+  if (!existsSync(backupPath)) {
+    return { success: false, error: `Backup "${backupName}" not found in ${scope} scope` };
+  }
+
+  const content = tryLoadJson<PersonalityFile>(backupPath);
+  if (!content) {
+    return { success: false, error: `Failed to read backup file "${backupName}"` };
+  }
+
+  // Extract original personality name from backup name (format: <name>-backup-<timestamp>)
+  const match = backupName.match(/^(.+)-backup-\d+$/);
+  const personalityName = (match && match[1]) || backupName;
+
+  // Save to personalities directory
+  savePersonalityFile(personalityName, content, scope, projectDir, globalConfigDir);
+
+  return { success: true, name: personalityName };
 }

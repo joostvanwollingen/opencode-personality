@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "emoji": {
+      "type": "boolean"
+    },
+    "slangIntensity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "moods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "hint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "hint",
+          "score"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "mood": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "string",
+          "minLength": 1
+        },
+        "override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "drift": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "toast": {
+          "type": "boolean"
+        },
+        "seed": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "enabled",
+        "default",
+        "drift"
+      ],
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "current": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "lastUpdate": {
+          "type": "number"
+        },
+        "override": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "overrideExpiry": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "current",
+        "score",
+        "lastUpdate",
+        "override",
+        "overrideExpiry"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "description",
+    "emoji",
+    "slangIntensity",
+    "mood"
+  ],
+  "additionalProperties": false
+}

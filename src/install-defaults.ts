@@ -3,11 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ConfigScope } from './types.js';
 import { listPersonalities, savePersonalityFile } from './config.js';
+import { validatePersonalityFile, formatValidationErrors } from './schema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULTS_DIR = path.join(__dirname, '..', '..', 'personalities');
+const DEFAULTS_DIR = path.join(__dirname, '..', 'personalities');
 
 export function hasPersonalities(projectDir: string, globalConfigDir: string): boolean {
   const personalities = listPersonalities(projectDir, globalConfigDir);
@@ -26,6 +27,15 @@ export function installDefaultPersonalities(scope: ConfigScope, projectDir: stri
     const sourcePath = path.join(DEFAULTS_DIR, file);
     const content = fs.readFileSync(sourcePath, 'utf-8');
     const personality = JSON.parse(content);
+
+    // Validate default personality before installing
+    const validation = validatePersonalityFile(personality);
+    if (!validation.valid) {
+      console.warn(`Warning: Default personality '${name}' failed validation:`);
+      console.warn(formatValidationErrors(validation));
+      console.warn(`Skipping installation of '${name}'`);
+      continue;
+    }
 
     // Only install if personality with this name doesn't already exist
     const existing = listPersonalities(projectDir, globalConfigDir);

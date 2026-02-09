@@ -1,9 +1,14 @@
 import { tool } from '@opencode-ai/plugin';
+import type { ToolDefinition } from '@opencode-ai/plugin';
 import type { PersonalityFile, MoodDefinition, PluginClient } from '../types.js';
 import { savePersonalityFile, mergeWithDefaults, listPersonalities } from '../config.js';
 import { loadPluginConfig, savePluginConfig } from '../plugin-config.js';
 
-export function createSavePersonalityTool(projectDir: string, globalConfigDir: string, client: PluginClient) {
+export function createSavePersonalityTool(
+  projectDir: string,
+  globalConfigDir: string,
+  client: PluginClient,
+): ToolDefinition {
   return tool({
     description:
       'Save a personality configuration with a name. Use this after collecting personality details from the user. Creates or updates a personality file in the personalities directory.',

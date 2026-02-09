@@ -9,8 +9,13 @@ import {
   loadPersonality,
   savePersonalityFile,
   deletePersonality,
+  backupPersonality,
+  listBackups,
+  restorePersonality,
 } from '../config.js';
 import { loadPluginConfig, savePluginConfig } from '../plugin-config.js';
+import { validatePersonalityFile, formatValidationErrors } from '../schema.js';
+import { existsSync, readFileSync } from 'node:fs';
 
 function normalizeToken(token: string): string {
   if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
@@ -76,12 +81,14 @@ export function parseCommandArgs(raw: string): ParsedCommand {
 function buildPersonalityHelp(): string {
   return [
     'Usage:',
-    '  /personality list                          - List all available personalities',
-    '  /personality use <name>                    - Select and activate a personality',
-    '  /personality create <name> [--scope global|project] - Create new personality',
+    '  /personality list [--backups]              - List all available personalities or backups',
+    '  /personality use <name> [--backup]         - Select and activate a personality',
+    '  /personality switch <name> [--backup] [--file <path>] - Switch personality (alias for use, supports external files)',
+    '  /personality create <name> [--scope global|project] [--preset-only] [--as-preset <name>] - Create new personality',
     '  /personality delete <name> [--scope global|project] - Delete a personality',
-    '  /personality edit <name> [--scope global|project] [--field <name> --value <value>]',
-    '  /personality show [name]                   - Show personality details',
+    '  /personality edit <name> [--scope global|project] [--field <name> --value <value>] [--preset <name>]',
+    '  /personality show [name] [--validate]      - Show personality details (optionally validate)',
+    '  /personality restore <name> [--scope global|project] - Restore personality from backup',
     '  /personality reset --scope global|project --confirm',
     '',
     'Fields for --field:',
@@ -214,6 +221,28 @@ export async function handlePersonalityCommand(
   }
 
   if (sub === 'list') {
+    if (parsed.flags.backups === true) {
+      const backups = listBackups(projectDir, globalConfigDir);
+      if (backups.length === 0) {
+        output.parts.push({
+          type: 'text',
+          text: 'No backups available.',
+        });
+      } else {
+        const lines = ['Available backups:'];
+        for (const backup of backups) {
+          const scopeLabel = backup.scope === 'project' ? ' (project)' : ' (global)';
+          lines.push(`  • ${backup.name}${scopeLabel} - ${backup.createdAt}`);
+        }
+        lines.push('', `Total: ${backups.length} backup(s)`);
+        output.parts.push({
+          type: 'text',
+          text: lines.join('\n'),
+        });
+      }
+      return;
+    }
+
     output.parts.push({
       type: 'text',
       text: buildSelectionPrompt(available, pluginConfig.selectedPersonality),
@@ -221,7 +250,62 @@ export async function handlePersonalityCommand(
     return;
   }
 
-  if (sub === 'use') {
+  if (sub === 'use' || sub === 'switch') {
+    const filePath = typeof parsed.flags.file === 'string' ? parsed.flags.file : null;
+
+    // Handle external file import
+    if (filePath && sub === 'switch') {
+      if (!existsSync(filePath)) {
+        output.parts.push({
+          type: 'text',
+          text: `File not found: ${filePath}`,
+        });
+        return;
+      }
+
+      try {
+        const fileContent = JSON.parse(readFileSync(filePath, 'utf-8')) as PersonalityFile;
+        const validation = validatePersonalityFile(fileContent);
+
+        if (!validation.valid) {
+          output.parts.push({
+            type: 'text',
+            text: `Invalid personality file:\n${formatValidationErrors(validation)}`,
+          });
+          return;
+        }
+
+        const importName = nameArg || fileContent.name || 'imported';
+
+        // Backup current personality if requested
+        if (parsed.flags.backup === true && pluginConfig.selectedPersonality) {
+          const backupName = backupPersonality(pluginConfig.selectedPersonality, scope, projectDir, globalConfigDir);
+          if (backupName) {
+            output.parts.push({
+              type: 'text',
+              text: `Backed up current personality to: ${backupName}`,
+            });
+          }
+        }
+
+        // Save imported personality and activate it
+        savePersonalityFile(importName, fileContent, scope, projectDir, globalConfigDir);
+        savePluginConfig({ selectedPersonality: importName }, scope, projectDir, globalConfigDir);
+
+        output.parts.push({
+          type: 'text',
+          text: `Imported and activated personality: ${importName}\n\n${fileContent.description.slice(0, 100)}...`,
+        });
+        return;
+      } catch (error) {
+        output.parts.push({
+          type: 'text',
+          text: `Failed to import personality: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        return;
+      }
+    }
+
     if (!nameArg) {
       output.parts.push({
         type: 'text',
@@ -237,6 +321,17 @@ export async function handlePersonalityCommand(
         text: `Personality "${nameArg}" not found.\n\n${buildSelectionPrompt(available, pluginConfig.selectedPersonality)}`,
       });
       return;
+    }
+
+    // Backup current personality if requested
+    if (parsed.flags.backup === true && pluginConfig.selectedPersonality) {
+      const backupName = backupPersonality(pluginConfig.selectedPersonality, scope, projectDir, globalConfigDir);
+      if (backupName) {
+        output.parts.push({
+          type: 'text',
+          text: `Backed up current personality to: ${backupName}`,
+        });
+      }
     }
 
     // Save selection to plugin config
@@ -255,6 +350,57 @@ export async function handlePersonalityCommand(
         type: 'text',
         text: `Please specify a name for the new personality.\n\nExample: /personality create my-assistant`,
       });
+      return;
+    }
+
+    const asPreset = typeof parsed.flags['as-preset'] === 'string' ? parsed.flags['as-preset'] : null;
+    const presetName = asPreset || nameArg;
+
+    // If --preset-only flag is set, we only create without activating
+    if (parsed.flags['preset-only'] === true) {
+      // Save a minimal personality template
+      const template: PersonalityFile = {
+        name: presetName,
+        description: `Personality preset: ${presetName}`,
+        emoji: false,
+        slangIntensity: 0.5,
+        mood: { enabled: false, default: 'happy', drift: 0.2, override: null, toast: true },
+      };
+
+      savePersonalityFile(presetName, template, scope, projectDir, globalConfigDir);
+
+      output.parts.push({
+        type: 'text',
+        text: `Created personality preset "${presetName}" (${scope}) without activating.\n\nUse '/personality switch ${presetName}' to activate it.`,
+      });
+      return;
+    }
+
+    // If --as-preset flag is set, save and optionally activate
+    if (asPreset) {
+      // Check if we should also activate (--activate flag)
+      if (parsed.flags.activate === true) {
+        output.parts.push({
+          type: 'text',
+          text: buildCreatePrompt(nameArg, scope) + `\n\nNote: This will be saved as preset "${asPreset}" and activated automatically.`,
+        });
+      } else {
+        // Just save as preset without activating
+        const template: PersonalityFile = {
+          name: asPreset,
+          description: `Personality preset: ${asPreset}`,
+          emoji: false,
+          slangIntensity: 0.5,
+          mood: { enabled: false, default: 'happy', drift: 0.2, override: null, toast: true },
+        };
+
+        savePersonalityFile(asPreset, template, scope, projectDir, globalConfigDir);
+
+        output.parts.push({
+          type: 'text',
+          text: `Created personality preset "${asPreset}" (${scope}) without activating.\n\nUse '/personality switch ${asPreset}' to activate it.`,
+        });
+      }
       return;
     }
 
@@ -317,27 +463,41 @@ export async function handlePersonalityCommand(
       return;
     }
 
+    const validate = parsed.flags.validate === true;
+    const lines: string[] = [`Personality: ${showName} (${personality.metadata.source})`];
+
+    if (validate) {
+      const validation = validatePersonalityFile(personality.personality);
+      lines.push('', 'Validation: ' + (validation.valid ? '✓ Valid' : '✗ Invalid'), formatValidationErrors(validation));
+    }
+
+    lines.push('', formatConfigOutput(personality.personality));
+
     output.parts.push({
       type: 'text',
-      text: `Personality: ${showName} (${personality.metadata.source})\n\n${formatConfigOutput(personality.personality)}`,
+      text: lines.join('\n'),
     });
     return;
   }
 
   if (sub === 'edit') {
-    if (!nameArg) {
+    // Support --preset flag to edit a specific preset (not necessarily the active one)
+    const presetName = typeof parsed.flags.preset === 'string' ? parsed.flags.preset : null;
+    const editName = nameArg || presetName || pluginConfig.selectedPersonality;
+
+    if (!editName) {
       output.parts.push({
         type: 'text',
-        text: `Please specify a personality name to edit.\n\nExample: /personality edit my-assistant`,
+        text: `Please specify a personality name to edit.\n\nExamples:\n  /personality edit my-assistant\n  /personality edit --preset my-preset`,
       });
       return;
     }
 
-    const personality = loadPersonality(nameArg, projectDir, globalConfigDir);
+    const personality = loadPersonality(editName, projectDir, globalConfigDir);
     if (!personality) {
       output.parts.push({
         type: 'text',
-        text: `Personality "${nameArg}" not found.\n\n${buildSelectionPrompt(available, pluginConfig.selectedPersonality)}`,
+        text: `Personality "${editName}" not found.\n\n${buildSelectionPrompt(available, pluginConfig.selectedPersonality)}`,
       });
       return;
     }
@@ -348,17 +508,17 @@ export async function handlePersonalityCommand(
     if (field && value) {
       const currentConfig = mergeWithDefaults(personality.personality);
       const nextConfig = applyFieldUpdate(currentConfig, field, value);
-      savePersonalityFile(nameArg, nextConfig, scope, projectDir, globalConfigDir);
+      savePersonalityFile(editName, nextConfig, scope, projectDir, globalConfigDir);
       output.parts.push({
         type: 'text',
-        text: `Updated ${field} in ${nameArg} (${scope}).`,
+        text: `Updated ${field} in ${editName} (${scope}).`,
       });
       return;
     }
 
     output.parts.push({
       type: 'text',
-      text: buildEditPrompt(nameArg, scope, personality.personality),
+      text: buildEditPrompt(editName, scope, personality.personality),
     });
     return;
   }
@@ -384,6 +544,30 @@ export async function handlePersonalityCommand(
       type: 'text',
       text: `Reset ${scopePersonalities.length} personalities for ${scope}.`,
     });
+    return;
+  }
+
+  if (sub === 'restore') {
+    if (!nameArg) {
+      output.parts.push({
+        type: 'text',
+        text: `Please specify a backup name to restore.\n\nExample: /personality restore my-assistant-backup-1234567890`,
+      });
+      return;
+    }
+
+    const result = restorePersonality(nameArg, scope, projectDir, globalConfigDir);
+    if (result.success) {
+      output.parts.push({
+        type: 'text',
+        text: `Restored personality "${result.name}" from backup "${nameArg}" (${scope}).`,
+      });
+    } else {
+      output.parts.push({
+        type: 'text',
+        text: `Failed to restore: ${result.error}`,
+      });
+    }
     return;
   }
 
