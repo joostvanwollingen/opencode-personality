@@ -35,6 +35,9 @@ The OpenCode Personality Plugin transforms your assistant from a generic text ge
 - **Intelligent Merging**: Global and project-level configs allow for project-specific overrides.
 - **Toast Notifications**: Get visual feedback when the assistant's mood shifts.
 - **Interactive Commands**: Manage your assistant's persona directly from the chat.
+- **Personality Switching**: Save and switch between multiple personalities with backup support.
+- **JSON Schema Validation**: All personality files are validated against a JSON schema.
+- **Global & Project Presets**: Store personalities in user space or project directories.
 
 
 ## Installation
@@ -63,10 +66,20 @@ Add to your `~/.config/opencode/opencode.json`:
 
 1. Run `opencode`
 2. Use `/personality create` to have the assistant guide you through setup.
+3. Use `/personality switch` to select from available personalities.
 
 ### Manual Setup
 
 Create a config at `~/.config/opencode/personality.json` (global) or `.opencode/personality.json` (project):
+
+**Note:** All personality files must include a `$schema` property referencing the JSON schema:
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/pantheon-org/opencode-personality/main/schema/personality.schema.json",
+  "name": "Claude",
+  ...
+}
+```
 
 ```json
 {
@@ -84,6 +97,37 @@ Create a config at `~/.config/opencode/personality.json` (global) or `.opencode/
 
 ## Configuration Reference
 
+### File Structure
+
+Personalities can be stored in two locations:
+
+```bash
+~/.config/opencode/personalities/     # Global personalities (available everywhere)
+.opencode/personalities/              # Project-local personalities (project specific)
+```
+
+Active personality configuration:
+```bash
+~/.config/opencode/personality.json   # Global active config
+.opencode/personality.json            # Project active config
+```
+
+### JSON Schema Validation
+
+All personality files are validated against a JSON Schema. The schema is available at:
+```
+https://raw.githubusercontent.com/pantheon-org/opencode-personality/main/schema/personality.schema.json
+```
+
+Add this to your personality files for IDE support:
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/pantheon-org/opencode-personality/main/schema/personality.schema.json",
+  "name": "My Assistant",
+  ...
+}
+```
+
 ### PersonalityFile
 
 | Field | Type | Default | Description |
@@ -92,6 +136,8 @@ Create a config at `~/.config/opencode/personality.json` (global) or `.opencode/
 | `description` | string | `""` | Personality description injected into prompts |
 | `emoji` | boolean | `false` | Whether to use emojis in responses |
 | `slangIntensity` | number | `0` | Slang usage intensity (0-1) |
+| `activePreset` | string | - | Name of currently active preset |
+| `activePresetScope` | string | - | Scope of active preset (`global` or `project`) |
 | `moods` | MoodDefinition[] | (defaults) | Custom mood definitions |
 | `mood` | MoodConfig | (see below) | Mood system configuration |
 
@@ -144,14 +190,46 @@ Manage personality configuration.
 | `create` | Interactive setup (use `--scope global` for global) |
 | `edit` | Interactive edit or direct update with `--field` and `--value` |
 | `reset` | Delete the config file (requires `--confirm`) |
+| `switch` | Switch to a different personality preset |
+| `restore` | Restore a personality from backup |
+| `list` | List available personalities with optional filtering |
 
 **Examples:**
 ```bash
+# Basic usage
 /personality show
 /personality create --scope global
 /personality edit --field emoji --value true
 /personality reset --scope project --confirm
+
+# Switch personalities
+/personality switch rick                    # Switch to preset 'rick'
+/personality switch --file ./custom.json    # Import from file
+
+# Restore from backup
+/personality restore rick                    # Restore rick from backup
+/personality restore --list                  # List available backups
+
+# List with filters
+/personality list                            # List all personalities
+/personality list --preset-only              # List only presets
+/personality list --backups                  # List available backups
 ```
+
+**Available Flags:**
+
+| Flag | Description | Commands |
+|------|-------------|----------|
+| `--scope` | Target scope: `global` or `project` | create, edit, reset |
+| `--confirm` | Confirm destructive operation | reset |
+| `--field` | Field name to edit | edit |
+| `--value` | Field value to set | edit |
+| `--preset-only` | Show only preset personalities | list |
+| `--as-preset` | Save as preset with name | create, edit |
+| `--file` | Import personality from JSON file | switch |
+| `--preset` | Edit a specific preset | edit |
+| `--backup` | Create backup before changing | use, create, edit, delete |
+| `--backups` | List available backups | list, restore |
 
 ## Tools
 
