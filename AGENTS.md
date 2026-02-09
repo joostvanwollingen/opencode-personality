@@ -22,8 +22,13 @@ src/
 ├── index.ts              # Plugin entry point, hooks registration
 ├── types.ts              # All type definitions
 ├── config.ts             # Config loading, merging, state management
+├── plugin-config.ts      # Plugin-level config (selectedPersonality)
+├── schema.ts             # Zod schema validation for personality files
 ├── mood.ts               # Mood drift, scoring functions
 ├── prompt.ts             # Personality prompt builder
+├── install-defaults.ts   # Default personality installation logic
+├── test-utils.ts         # Test helper functions
+├── defaults/             # Built-in personality templates
 ├── tools/
 │   ├── setMood.ts        # setMood tool definition
 │   └── savePersonality.ts # savePersonality tool definition
@@ -37,9 +42,12 @@ src/
 | File | Purpose |
 |------|---------|
 | `src/types.ts` | All exported types - modify here for schema changes |
-| `src/config.ts` | Config precedence logic (global + project merge), file I/O |
+| `src/config.ts` | Personality file I/O, merging, state management, migration |
+| `src/plugin-config.ts` | Plugin-level config (selectedPersonality persistence) |
+| `src/schema.ts` | Zod schema validation for personality files |
 | `src/mood.ts` | Mood drift algorithm - uses seeded random for testing |
 | `src/prompt.ts` | Builds personality section for system prompt |
+| `src/install-defaults.ts` | Installs default personalities on first run |
 | `src/index.ts` | Plugin hooks registration, main entry point |
 
 ## Plugin Hooks Used
@@ -52,10 +60,11 @@ src/
 
 ## Testing Workflow
 
-1. Run `npm run typecheck` to verify types
-2. Run `npm run lint` to check code style
-3. Run `npm run build` to verify build
-4. Test in OpenCode by updating `opencode.json` to point to `src/index.ts`
+1. Run `bun test` or `bun test --watch` for unit tests
+2. Run `npm run typecheck` to verify types
+3. Run `npm run lint` to check code style
+4. Run `npm run build` to verify build
+5. Test in OpenCode by updating `opencode.json` to point to `src/index.ts`
 
 ## Making Changes
 
@@ -123,7 +132,8 @@ const normalized = normalizeState(state, defaultMood, moods)
 
 ## Constraints
 
-- **Backward Compatible**: Accept old config formats, warn on deprecation
-- **No-op Safe**: Return empty hooks if config is missing
+- **Backward Compatible**: Accept old config formats, auto-migrate on first run
+- **No-op Safe**: Return limited hooks if no personality is selected
 - **Deterministic**: Use `mood.seed` for reproducible tests
-- **Minimal Dependencies**: Only `@opencode-ai/plugin` peer dependency
+- **Minimal Dependencies**: Only `@opencode-ai/plugin` peer dependency and `zod` for validation
+- **Auto-install**: Installs default personalities if none exist on first run
