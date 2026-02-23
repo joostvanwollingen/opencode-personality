@@ -7,8 +7,8 @@
       "template": "Call the setMood tool to set the mood to the mood and duration requested by the user. If the duration is not mentioned assume session."
     },
     "personality": {
-      "description": "Manage personality config: create/edit/show/reset",
-      "template": "Call the appropriate personality management tool based on the user's request to create, edit, show, or reset the personality configuration."
+      "description": "Manage personalities: create/edit/show/list/switch/reset",
+      "template": "Call the appropriate personality management tool based on the user's request. Supports: create (new personality), edit (modify active), show (--all for full file), list (all personalities), switch <name> (change active), and reset (--name <name> to remove specific, or --confirm to reset all)."
     }
   }
 }

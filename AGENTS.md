@@ -4,7 +4,7 @@ Guidelines for AI agents working on this codebase.
 
 ## Project Overview
 
-An OpenCode plugin that adds configurable personality and mood systems to AI assistants. The plugin injects personality traits into the system prompt and manages a mood state machine that drifts over time.
+An OpenCode plugin that adds configurable personality and mood systems to AI assistants. Supports multiple personalities per config file with per-personality mood state tracking. The plugin injects the active personality traits into the system prompt and manages a mood state machine that drifts over time.
 
 ## Code Style
 
@@ -21,7 +21,7 @@ An OpenCode plugin that adds configurable personality and mood systems to AI ass
 src/
 ├── index.ts              # Plugin entry point, hooks registration
 ├── types.ts              # All type definitions
-├── config.ts             # Config loading, merging, state management
+├── config.ts             # Config loading, merging, migration, state management
 ├── mood.ts               # Mood drift, scoring functions
 ├── prompt.ts             # Personality prompt builder
 ├── tools/
@@ -29,15 +29,24 @@ src/
 │   └── savePersonality.ts # savePersonality tool definition
 └── commands/
     ├── mood.ts           # /mood command handler
-    └── personality.ts    # /personality command handler
+    └── personality.ts    # /personality command handler (list, switch, create, edit, reset)
 ```
+
+## Key Types
+
+| Type | Purpose |
+|------|---------|
+| `PersonalityDefinition` | Single personality config (name, description, emoji, slang, moods, mood config) |
+| `PersonalityFile` | Multi-personality file on disk (`active`, `personalities` map, `states` map) |
+| `LegacyPersonalityFile` | Old single-personality format, used for migration detection |
+| `ConfigResult` | Loaded config with `config` (active PersonalityDefinition), `file` (full PersonalityFile), source, paths |
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `src/types.ts` | All exported types - modify here for schema changes |
-| `src/config.ts` | Config precedence logic (global + project merge), file I/O |
+| `src/config.ts` | Config precedence logic (global + project merge), legacy migration, multi-personality CRUD, file I/O |
 | `src/mood.ts` | Mood drift algorithm - uses seeded random for testing |
 | `src/prompt.ts` | Builds personality section for system prompt |
 | `src/index.ts` | Plugin hooks registration, main entry point |
@@ -46,7 +55,7 @@ src/
 
 | Hook | Purpose |
 |------|---------|
-| `experimental.chat.system.transform` | Inject personality into system prompt |
+| `experimental.chat.system.transform` | Inject active personality into system prompt |
 | `event` | Drift mood after assistant responses |
 | `command.execute.before` | Handle `/mood` and `/personality` commands |
 
@@ -58,6 +67,14 @@ src/
 4. Test in OpenCode by updating `opencode.json` to point to `src/index.ts`
 
 ## Making Changes
+
+### Adding a New Personality Field
+
+1. Add field to `PersonalityDefinition` in `src/types.ts`
+2. Add default value in `mergeWithDefaults()` in `src/config.ts`
+3. Use the field in `src/prompt.ts` or other consumers
+4. Update `savePersonality` tool args in `src/tools/savePersonality.ts`
+5. Update README config reference
 
 ### Adding a New Mood Field
 
@@ -104,6 +121,38 @@ if (configResult.config === null) {
   // No config - return minimal hooks or no-op
   return {}
 }
+const config = configResult.config       // PersonalityDefinition (active)
+const file = configResult.file!          // PersonalityFile (full store)
+const activeKey = file.active            // Key of active personality
+```
+
+### Multi-Personality Operations
+
+```typescript
+import { listPersonalities, addPersonality, removePersonality, switchActivePersonality } from "./config.js"
+
+const names = listPersonalities(file)
+const updated = addPersonality(file, "NewBot", definition)
+const switched = switchActivePersonality(file, "NewBot")
+const reduced = removePersonality(file, "OldBot")  // null if last personality removed
+```
+
+### Legacy Migration
+
+```typescript
+import { isLegacyFormat, migrateLegacyToMulti } from "./config.js"
+
+if (isLegacyFormat(rawData)) {
+  const multiFile = migrateLegacyToMulti(rawData as LegacyPersonalityFile)
+}
+```
+
+### Mood State (Per-Personality)
+
+```typescript
+// Load and save state require the activeKey parameter
+const state = loadMoodState(statePath, config, activeKey)
+saveMoodState(statePath, state, activeKey)
 ```
 
 ### Type Guards for Output
@@ -113,17 +162,10 @@ const output = cmdOutput as { parts: Array<{ type: string; text: string }> }
 output.parts.push({ type: "text", text: "Message" })
 ```
 
-### Mood State Normalization
-
-Always normalize state after loading to handle config changes:
-
-```typescript
-const normalized = normalizeState(state, defaultMood, moods)
-```
-
 ## Constraints
 
-- **Backward Compatible**: Accept old config formats, warn on deprecation
+- **Backward Compatible**: Auto-migrate old single-personality config files on save
 - **No-op Safe**: Return empty hooks if config is missing
 - **Deterministic**: Use `mood.seed` for reproducible tests
 - **Minimal Dependencies**: Only `@opencode-ai/plugin` peer dependency
+- **Per-Personality State**: Mood state is tracked independently per personality

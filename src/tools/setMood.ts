@@ -1,12 +1,13 @@
 import { tool } from "@opencode-ai/plugin"
-import type { PersonalityFile, MoodDefinition, PluginClient, MoodDuration } from "../types.js"
+import type { PersonalityDefinition, MoodDefinition, PluginClient, MoodDuration } from "../types.js"
 import { loadMoodState, saveMoodState } from "../config.js"
 
 export function createSetMoodTool(
   statePath: string,
-  config: PersonalityFile,
+  config: PersonalityDefinition,
   moods: MoodDefinition[],
-  client: PluginClient
+  client: PluginClient,
+  activeKey: string
 ) {
   return tool({
     description: "Set the assistant's current mood",
@@ -20,7 +21,7 @@ export function createSetMoodTool(
         ),
     },
     async execute(args) {
-      const state = loadMoodState(statePath, config)
+      const state = loadMoodState(statePath, config, activeKey)
 
       if (!moods.some(item => item.name === args.mood)) {
         return `Invalid mood. Choose from: ${moods.map(item => item.name).join(", ")}`
@@ -34,7 +35,7 @@ export function createSetMoodTool(
       }
       state.current = args.mood
 
-      saveMoodState(statePath, state)
+      saveMoodState(statePath, state, activeKey)
 
       await client.app.log({
         body: {

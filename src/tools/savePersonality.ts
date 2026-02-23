@@ -1,6 +1,11 @@
 import { tool } from "@opencode-ai/plugin"
-import type { PersonalityFile, MoodDefinition, PluginClient, ConfigResult } from "../types.js"
-import { writePersonalityFile, mergeWithDefaults, resolveScopePath } from "../config.js"
+import type {
+  PersonalityDefinition,
+  MoodDefinition,
+  PluginClient,
+  ConfigResult,
+} from "../types.js"
+import { mergeWithDefaults, resolveScopePath, savePersonalityToFile } from "../config.js"
 
 export function createSavePersonalityTool(
   configResult: ConfigResult,
@@ -10,7 +15,10 @@ export function createSavePersonalityTool(
     description:
       "Save a personality configuration. Use this after collecting personality details from the user.",
     args: {
-      name: tool.schema.string().optional().describe("Name of the personality"),
+      name: tool.schema
+        .string()
+        .optional()
+        .describe("Name/identifier for the personality (used as key in personality collection)"),
       description: tool.schema
         .string()
         .describe("Personality description (required) - describes how the assistant behaves"),
@@ -61,36 +69,39 @@ export function createSavePersonalityTool(
       const scope = args.scope ?? "project"
       const scopePath = resolveScopePath(scope, configResult)
 
-       const config: Partial<PersonalityFile> = {
-         name: args.name?.trim() ?? "",
-         description: args.description.trim(),
-         emoji: args.emoji ?? false,
-         slangIntensity: args.slangIntensity ?? 0,
-         mood: {
-           enabled: args.moodEnabled ?? false,
-           default: args.moodDefault ?? "happy",
-           override: null,
-           drift: args.moodDrift ?? 0.2,
-           toast: args.moodToast ?? true,
-         },
-       }
-
-      if (args.moods && args.moods.length > 0) {
-        config.moods = args.moods as MoodDefinition[]
+      const partial: Partial<PersonalityDefinition> = {
+        name: args.name?.trim() ?? "",
+        description: args.description.trim(),
+        emoji: args.emoji ?? false,
+        slangIntensity: args.slangIntensity ?? 0,
+        mood: {
+          enabled: args.moodEnabled ?? false,
+          default: args.moodDefault ?? "happy",
+          override: null,
+          drift: args.moodDrift ?? 0.2,
+          toast: args.moodToast ?? true,
+        },
       }
 
-      const merged = mergeWithDefaults(config)
-      writePersonalityFile(scopePath, merged)
+      if (args.moods && args.moods.length > 0) {
+        partial.moods = args.moods as MoodDefinition[]
+      }
+
+      const definition = mergeWithDefaults(partial)
+
+      // Use name as the personality key, fall back to active personality or "default"
+      const key = args.name?.trim() || configResult.file?.active || "default"
+      savePersonalityToFile(scopePath, key, definition, true)
 
       await client.tui.showToast({
         body: {
           title: "Personality Saved",
-          message: `Configuration saved to ${scope}`,
+          message: `"${key}" saved to ${scope} and set as active`,
           variant: "success",
         },
       })
 
-      return `Personality saved to ${scope} (${scopePath})`
+      return `Personality "${key}" saved to ${scope} (${scopePath}) and set as active.`
     },
   })
 }

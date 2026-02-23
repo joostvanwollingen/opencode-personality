@@ -1,11 +1,6 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 import type { CommandOutput } from "./types.js"
-import {
-  loadConfigWithPrecedence,
-  resolveMoods,
-  loadMoodState,
-  mergeWithDefaults,
-} from "./config.js"
+import { loadConfigWithPrecedence, resolveMoods, loadMoodState } from "./config.js"
 import { buildPersonalityPrompt } from "./prompt.js"
 import { driftMoodWithToast } from "./mood.js"
 import { createSetMoodTool } from "./tools/setMood.js"
@@ -29,8 +24,6 @@ const personalityPlugin: Plugin = async (input: PluginInput) => {
   const savePersonalityTool = createSavePersonalityTool(configResult, client)
 
   if (configResult.config === null) {
-    const emptyConfig = mergeWithDefaults({})
-
     return {
       tool: {
         savePersonality: savePersonalityTool,
@@ -38,17 +31,19 @@ const personalityPlugin: Plugin = async (input: PluginInput) => {
 
       "command.execute.before": async (cmdInput, output) => {
         if (cmdInput.command === "personality" && isCommandOutput(output)) {
-          await handlePersonalityCommand(cmdInput.arguments, emptyConfig, configResult, output)
+          await handlePersonalityCommand(cmdInput.arguments, configResult, output)
         }
       },
     }
   }
 
   const config = configResult.config
+  const file = configResult.file!
+  const activeKey = file.active
   const { statePath } = configResult
   const moods = resolveMoods(config)
 
-  const setMoodTool = createSetMoodTool(statePath, config, moods, client)
+  const setMoodTool = createSetMoodTool(statePath, config, moods, client, activeKey)
 
   return {
     tool: {
@@ -60,20 +55,36 @@ const personalityPlugin: Plugin = async (input: PluginInput) => {
       if (!isCommandOutput(output)) return
 
       if (cmdInput.command === "personality") {
-        await handlePersonalityCommand(cmdInput.arguments, config, configResult, output)
+        await handlePersonalityCommand(cmdInput.arguments, configResult, output)
         return
       }
 
       if (cmdInput.command === "mood") {
-        handleMoodCommand(cmdInput.arguments, statePath, config, moods, configResult, output)
+        handleMoodCommand(
+          cmdInput.arguments,
+          statePath,
+          config,
+          moods,
+          activeKey,
+          configResult,
+          output
+        )
       }
     },
 
     "experimental.chat.system.transform": async (_hookInput, output) => {
-      let state = loadMoodState(statePath, config)
+      let state = loadMoodState(statePath, config, activeKey)
 
       if (config.mood.enabled) {
-        state = await driftMoodWithToast(statePath, state, config, moods, config.mood.seed, client)
+        state = await driftMoodWithToast(
+          statePath,
+          state,
+          config,
+          moods,
+          config.mood.seed,
+          client,
+          activeKey
+        )
       }
 
       const prompt = buildPersonalityPrompt(config, state.current, moods)
@@ -84,8 +95,16 @@ const personalityPlugin: Plugin = async (input: PluginInput) => {
       if (event.type === "message.updated" && config.mood.enabled) {
         const msg = event.properties as { info?: { sessionID?: string; role?: string } }
         if (msg.info?.sessionID && msg.info.role === "assistant") {
-          const state = loadMoodState(statePath, config)
-          await driftMoodWithToast(statePath, state, config, moods, config.mood.seed, client)
+          const state = loadMoodState(statePath, config, activeKey)
+          await driftMoodWithToast(
+            statePath,
+            state,
+            config,
+            moods,
+            config.mood.seed,
+            client,
+            activeKey
+          )
         }
       }
     },

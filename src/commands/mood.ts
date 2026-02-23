@@ -1,21 +1,27 @@
-import type { PersonalityFile, MoodDefinition, ConfigResult, CommandOutput } from "../types.js"
+import type {
+  PersonalityDefinition,
+  MoodDefinition,
+  ConfigResult,
+  CommandOutput,
+} from "../types.js"
 import { loadMoodState, saveMoodState } from "../config.js"
 
 export function handleMoodCommand(
   args: string,
   statePath: string,
-  config: PersonalityFile,
+  config: PersonalityDefinition,
   moods: MoodDefinition[],
+  activeKey: string,
   configResult: ConfigResult,
   output: CommandOutput
 ): void {
   const trimmed = args.trim().toLowerCase()
-  const state = loadMoodState(statePath, config)
+  const state = loadMoodState(statePath, config, activeKey)
 
   if (!trimmed || trimmed === "status") {
     output.parts.push({
       type: "text",
-      text: `Current mood: **${state.current}** (score: ${state.score.toFixed(2)})${state.override ? ` [override: ${state.override}]` : ""}\nConfig source: ${configResult.source}`,
+      text: `Current mood: **${state.current}** (score: ${state.score.toFixed(2)})${state.override ? ` [override: ${state.override}]` : ""}\nActive personality: ${activeKey}\nConfig source: ${configResult.source}`,
     })
     return
   }
@@ -31,7 +37,7 @@ export function handleMoodCommand(
   state.override = trimmed
   state.current = trimmed
   state.overrideExpiry = null
-  saveMoodState(statePath, state)
+  saveMoodState(statePath, state, activeKey)
 
   output.parts.push({
     type: "text",

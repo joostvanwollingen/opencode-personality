@@ -1,8 +1,8 @@
-import type { PersonalityFile, MoodDefinition, MoodName } from "./types.js"
+import type { PersonalityDefinition, MoodDefinition, MoodName } from "./types.js"
 import { resolveMoodHint } from "./mood.js"
 
 export function buildPersonalityPrompt(
-  config: PersonalityFile,
+  config: PersonalityDefinition,
   mood: MoodName,
   moods: MoodDefinition[]
 ): string {

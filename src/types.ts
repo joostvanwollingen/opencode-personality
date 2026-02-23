@@ -55,9 +55,9 @@ export type MoodDefinition = {
 }
 
 /**
- * Complete personality configuration file schema
+ * Single personality definition — the core configuration for one personality
  */
-export type PersonalityFile = {
+export type PersonalityDefinition = {
   /** Optional name for the assistant */
   name?: string
   /** Personality description injected into prompts */
@@ -70,16 +70,37 @@ export type PersonalityFile = {
   moods?: MoodDefinition[]
   /** Mood system configuration */
   mood: MoodConfig
-  /** Runtime state (stored in same file) */
+}
+
+/**
+ * Legacy single-personality file format (pre-multi-personality).
+ * Used for migration detection only.
+ */
+export type LegacyPersonalityFile = PersonalityDefinition & {
+  /** Runtime state (stored in same file in legacy format) */
   state?: MoodState
+}
+
+/**
+ * Multi-personality file format stored on disk
+ */
+export type PersonalityFile = {
+  /** Key of the currently active personality */
+  active: string
+  /** Map of personality key to definition */
+  personalities: Record<string, PersonalityDefinition>
+  /** Per-personality mood states */
+  states?: Record<string, MoodState>
 }
 
 /**
  * Result of loading config with precedence
  */
 export type ConfigResult = {
-  /** Merged config or null if none found */
-  config: PersonalityFile | null
+  /** Resolved active personality definition or null if none found */
+  config: PersonalityDefinition | null
+  /** Full multi-personality file or null if none found */
+  file: PersonalityFile | null
   /** Where the config was loaded from */
   source: "global" | "project" | "both" | "none"
   /** Path where state should be saved */
@@ -99,6 +120,8 @@ export type ConfigScope = "global" | "project"
 export type ParsedCommand = {
   /** Subcommand (e.g., "create", "edit", "show") */
   subcommand: string | null
+  /** Positional arguments after subcommand */
+  args: string[]
   /** Flag values (--flag value or --flag) */
   flags: Record<string, string | boolean>
   /** Key=value pairs */

@@ -1,10 +1,21 @@
-import type { PersonalityFile, ParsedCommand, ConfigResult, CommandOutput } from "../types.js"
+import type {
+  PersonalityDefinition,
+  PersonalityFile,
+  ParsedCommand,
+  ConfigResult,
+  CommandOutput,
+} from "../types.js"
 import {
   mergeWithDefaults,
   resolveScope,
   resolveScopePath,
   formatConfigOutput,
   writePersonalityFile,
+  savePersonalityToFile,
+  loadPersonalityFile,
+  listPersonalities,
+  removePersonality,
+  switchActiveInFile,
   parseBoolean,
   parseNumber,
 } from "../config.js"
@@ -30,6 +41,7 @@ export function parseCommandArgs(raw: string): ParsedCommand {
   const tokens = tokenizeArgs(raw.trim())
   const flags: Record<string, string | boolean> = {}
   const values: Record<string, string> = {}
+  const args: string[] = []
   let subcommand: string | null = null
 
   let index = 0
@@ -68,10 +80,12 @@ export function parseCommandArgs(raw: string): ParsedCommand {
       continue
     }
 
+    // Positional arg after subcommand
+    args.push(token)
     index += 1
   }
 
-  return { subcommand, flags, values }
+  return { subcommand, args, flags, values }
 }
 
 function buildPersonalityHelp(): string {
@@ -79,8 +93,10 @@ function buildPersonalityHelp(): string {
     "Usage:",
     "  /personality create [--scope project|global]",
     "  /personality edit [--scope project|global] [--field <name> --value <value>]",
-    "  /personality show",
-    "  /personality reset [--scope project|global] --confirm",
+    "  /personality show [--all]",
+    "  /personality list",
+    "  /personality switch <name>",
+    "  /personality reset [--scope project|global] [--name <name>] --confirm",
     "",
     "Fields for --field:",
     "  name, description, emoji, slangIntensity, mood.enabled, mood.default, mood.drift",
@@ -92,7 +108,7 @@ function buildCreatePrompt(scope: string): string {
 
 Please help them by asking about their preferences. Collect the following information. Use structured questions (TUI) if you have the tool. Otherwise through conversation.:
 
-1. **Name** (optional): What name should the assistant use when asked who it is?
+1. **Name** (required): A unique name/identifier for this personality. This is also used as the display name.
 2. **Description** (required): Describe the personality in a few sentences. This shapes how the assistant behaves and responds.
 3. **Emoji usage**: Should the assistant use emojis in responses? (yes/no)
 4. **Slang intensity**: How much slang should be used? (none, light, moderate, heavy)
@@ -100,16 +116,21 @@ Please help them by asking about their preferences. Collect the following inform
    - If yes, what should be the default mood? (e.g., happy, calm, energetic)
 
 Once you have gathered all the information, use the \`savePersonality\` tool to save the configuration with scope="${scope}".
+The personality will be added to the collection and set as the active personality.
 
 Start by giving the user the list above, and asking the user to describe the personality they want.`
 }
 
-function buildEditPrompt(scope: string, currentConfig: PersonalityFile): string {
-  return `The user wants to edit their personality configuration (scope: ${scope}).
+function buildEditPrompt(
+  scope: string,
+  config: PersonalityDefinition,
+  activeKey: string
+): string {
+  return `The user wants to edit the active personality "${activeKey}" (scope: ${scope}).
 
 Current configuration:
 \`\`\`json
-${JSON.stringify(currentConfig, null, 2)}
+${JSON.stringify(config, null, 2)}
 \`\`\`
 
 Ask what they would like to change. They can modify:
@@ -123,10 +144,10 @@ Start by asking what aspect of the personality they'd like to modify.`
 }
 
 function applyFieldUpdate(
-  config: PersonalityFile,
+  config: PersonalityDefinition,
   field: string,
   value: string
-): PersonalityFile {
+): PersonalityDefinition {
   const trimmed = value.trim()
   if (!trimmed) return config
 
@@ -162,15 +183,26 @@ function applyFieldUpdate(
   }
 }
 
+function formatPersonalityList(file: PersonalityFile): string {
+  const names = listPersonalities(file)
+  const lines = names.map(n =>
+    n === file.active ? `  * ${n} (active)` : `    ${n}`
+  )
+  return lines.join("\n")
+}
+
 export async function handlePersonalityCommand(
   args: string,
-  config: PersonalityFile,
   configResult: ConfigResult,
   output: CommandOutput
 ): Promise<void> {
   const parsed = parseCommandArgs(args)
   const sub = parsed.subcommand
-  const currentConfig = mergeWithDefaults(config)
+  const config = configResult.config
+    ? mergeWithDefaults(configResult.config)
+    : mergeWithDefaults({})
+  const file = configResult.file
+  const activeKey = file?.active ?? "default"
   const scope = resolveScope(parsed.flags, configResult)
   const scopePath = resolveScopePath(scope, configResult)
 
@@ -182,11 +214,76 @@ export async function handlePersonalityCommand(
     return
   }
 
-  if (sub === "show") {
+  if (sub === "list") {
+    if (!file) {
+      output.parts.push({
+        type: "text",
+        text: "No personalities configured. Use `/personality create` to create one.",
+      })
+      return
+    }
     output.parts.push({
       type: "text",
-      text: formatConfigOutput(currentConfig),
+      text: `Personalities:\n${formatPersonalityList(file)}`,
     })
+    return
+  }
+
+  if (sub === "switch") {
+    if (!file) {
+      output.parts.push({
+        type: "text",
+        text: "No personalities configured. Use `/personality create` to create one.",
+      })
+      return
+    }
+
+    const targetName = parsed.args[0]
+    if (!targetName) {
+      output.parts.push({
+        type: "text",
+        text: `Available personalities:\n${formatPersonalityList(file)}\n\nUsage: /personality switch <name>`,
+      })
+      return
+    }
+
+    if (!(targetName in file.personalities)) {
+      const names = listPersonalities(file)
+      output.parts.push({
+        type: "text",
+        text: `Personality "${targetName}" not found.\nAvailable: ${names.join(", ")}`,
+      })
+      return
+    }
+
+    if (targetName === file.active) {
+      output.parts.push({
+        type: "text",
+        text: `"${targetName}" is already the active personality.`,
+      })
+      return
+    }
+
+    switchActiveInFile(scopePath, targetName)
+    output.parts.push({
+      type: "text",
+      text: `Switched active personality to "${targetName}". Restart the session for the change to take full effect.`,
+    })
+    return
+  }
+
+  if (sub === "show") {
+    if (parsed.flags.all && file) {
+      output.parts.push({
+        type: "text",
+        text: `Active: ${activeKey}\n\n${JSON.stringify(file, null, 2)}`,
+      })
+    } else {
+      output.parts.push({
+        type: "text",
+        text: `Active personality: ${activeKey}\n\n${formatConfigOutput(config)}`,
+      })
+    }
     return
   }
 
@@ -203,33 +300,87 @@ export async function handlePersonalityCommand(
     const value = typeof parsed.flags.value === "string" ? parsed.flags.value : null
 
     if (field && value) {
-      const nextConfig = applyFieldUpdate(currentConfig, field, value)
-      writePersonalityFile(scopePath, nextConfig)
+      if (!file) {
+        output.parts.push({
+          type: "text",
+          text: "No personality to edit. Use `/personality create` first.",
+        })
+        return
+      }
+      const nextConfig = applyFieldUpdate(config, field, value)
+      savePersonalityToFile(scopePath, activeKey, nextConfig, false)
       output.parts.push({
         type: "text",
-        text: `Updated ${field} in ${scope}.`,
+        text: `Updated ${field} for "${activeKey}" in ${scope}.`,
       })
       return
     }
 
     output.parts.push({
       type: "text",
-      text: buildEditPrompt(scope, currentConfig),
+      text: buildEditPrompt(scope, config, activeKey),
     })
     return
   }
 
   if (sub === "reset") {
     const confirmed = parsed.flags.confirm === true
+    const targetName =
+      typeof parsed.flags.name === "string" ? parsed.flags.name : null
 
     if (!confirmed) {
-      output.parts.push({
-        type: "text",
-        text: `To reset personality config for ${scope}, run:\n  /personality reset --scope ${scope} --confirm`,
-      })
+      if (targetName) {
+        output.parts.push({
+          type: "text",
+          text: `To remove personality "${targetName}" from ${scope}, run:\n  /personality reset --name ${targetName} --scope ${scope} --confirm`,
+        })
+      } else {
+        output.parts.push({
+          type: "text",
+          text: `To reset all personality config for ${scope}, run:\n  /personality reset --scope ${scope} --confirm`,
+        })
+      }
       return
     }
 
+    if (targetName) {
+      // Remove specific personality from scope-specific file
+      const scopeFile = loadPersonalityFile(scopePath)
+      if (!scopeFile) {
+        output.parts.push({
+          type: "text",
+          text: `No personality config found for ${scope}.`,
+        })
+        return
+      }
+
+      if (!(targetName in scopeFile.personalities)) {
+        const names = listPersonalities(scopeFile)
+        output.parts.push({
+          type: "text",
+          text: `Personality "${targetName}" not found in ${scope}.\nAvailable in ${scope}: ${names.join(", ")}`,
+        })
+        return
+      }
+
+      const nextFile = removePersonality(scopeFile, targetName)
+      if (!nextFile) {
+        if (existsSync(scopePath)) unlinkSync(scopePath)
+        output.parts.push({
+          type: "text",
+          text: `Removed "${targetName}" (last personality). Config file deleted for ${scope}.`,
+        })
+      } else {
+        writePersonalityFile(scopePath, nextFile)
+        output.parts.push({
+          type: "text",
+          text: `Removed personality "${targetName}" from ${scope}.${scopeFile.active === targetName ? ` Active personality switched to "${nextFile.active}".` : ""}`,
+        })
+      }
+      return
+    }
+
+    // Reset entire file
     if (existsSync(scopePath)) {
       unlinkSync(scopePath)
       output.parts.push({

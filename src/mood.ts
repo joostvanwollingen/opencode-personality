@@ -1,4 +1,10 @@
-import type { MoodState, MoodDefinition, PersonalityFile, MoodName, PluginClient } from "./types.js"
+import type {
+  MoodState,
+  MoodDefinition,
+  PersonalityDefinition,
+  MoodName,
+  PluginClient,
+} from "./types.js"
 import { saveMoodState } from "./config.js"
 
 export function scoreToMood(score: number, moods: MoodDefinition[]): MoodName {
@@ -26,7 +32,7 @@ export function seededRandom(seed: number): number {
 
 export function driftMood(
   state: MoodState,
-  config: PersonalityFile,
+  config: PersonalityDefinition,
   moods: MoodDefinition[],
   seed?: number
 ): MoodState {
@@ -56,14 +62,15 @@ export function driftMood(
 export async function driftMoodWithToast(
   statePath: string,
   state: MoodState,
-  config: PersonalityFile,
+  config: PersonalityDefinition,
   moods: MoodDefinition[],
   seed: number | undefined,
-  client: PluginClient
+  client: PluginClient,
+  activeKey: string
 ): Promise<MoodState> {
   const previousMood = state.current
   const nextState = driftMood(state, config, moods, seed)
-  saveMoodState(statePath, nextState)
+  saveMoodState(statePath, nextState, activeKey)
 
   if (nextState.current !== previousMood && config.mood.toast) {
     await client.tui.showToast({
